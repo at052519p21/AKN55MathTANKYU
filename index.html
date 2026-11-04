@@ -1,74 +1,298 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>GitHub Pages お試しサイト</title>
-
-  <style>
-    * {
-      box-sizing: border-box;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>選択課題</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --fg: #1f2933; --sub: #5f6b7a; --line: #c9d0d8;
+    --btn: #ffffff; --hit: #cfe0ff; --accent: #2f5fc4; --on-accent: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d; --fg: #e8ecf0; --sub: #9aa6b4; --line: #3a4552;
+      --btn: #222a33; --hit: #2e4a80; --accent: #6b95e8; --on-accent: #0f1620;
     }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-
-      background: #f3f4f6;
-      color: #222;
-    }
-
-    .card {
-      width: min(90%, 600px);
-
-      padding: 40px;
-
-      text-align: center;
-
-      background: white;
-      border-radius: 20px;
-
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-    }
-
-    h1 {
-      margin-top: 0;
-    }
-
-    p {
-      line-height: 1.7;
-    }
-  </style>
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    -webkit-user-select: none; user-select: none;
+  }
+  main { max-width: 520px; margin: 0 auto; padding: 24px 20px; min-height: 100%;
+         display: flex; flex-direction: column; justify-content: center; gap: 20px; }
+  h1 { font-size: 1.35rem; margin: 0; }
+  p { line-height: 1.8; margin: 0; }
+  .sub { color: var(--sub); font-size: .9rem; }
+  button.main {
+    font: inherit; font-weight: 600; padding: 14px 20px; border: 0; border-radius: 10px;
+    background: var(--accent); color: var(--on-accent); cursor: pointer;
+  }
+  button.plain {
+    font: inherit; padding: 10px 16px; border: 1px solid var(--line); border-radius: 10px;
+    background: transparent; color: var(--fg); cursor: pointer;
+  }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .count { text-align: center; color: var(--sub); font-variant-numeric: tabular-nums; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .choice {
+    aspect-ratio: 1 / 1; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--btn); color: var(--fg); font: inherit; font-size: 2.4rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent; padding: 0;
+  }
+  .choice.hit { background: var(--hit); }
+  .choice svg { width: 62%; height: 62%; fill: currentColor; }
+  .status { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; }
+  .status.ng { border-color: #c0392b; }
+  .em { font-weight: 700; font-size: 1.1em; color: var(--accent); border-bottom: 2px solid var(--accent); }
+  .history { display: flex; gap: 8px; justify-content: center; }
+  .slot {
+    width: 44px; height: 44px; border: 1px dashed var(--line); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; font-weight: 600; color: var(--sub);
+  }
+  .slot.filled { border-style: solid; color: var(--fg); }
+  .slot svg { width: 60%; height: 60%; fill: currentColor; }
+  .opt { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line);
+         border-radius: 10px; line-height: 1.6; cursor: pointer; }
+  .opt input { margin-top: .45em; accent-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+</style>
 </head>
-
 <body>
+<main id="app"></main>
 
-  <main class="card">
-    <h1>GitHub Pages お試しサイト</h1>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFirestore, doc, getDoc, writeBatch, increment, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
-    <p>
-      HTML・CSS・JavaScriptを<br>
-      1つのHTMLファイルにまとめています。
-    </p>
+/* ============================================================
+   Firebase 設定（公開されても問題ない設定情報）
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyD-yN1HZzw-_f4Nr78SBUNVqf1EaAQe2RU",
+  authDomain: "mathgroup-tankyu.firebaseapp.com",
+  projectId: "mathgroup-tankyu",
+  storageBucket: "mathgroup-tankyu.firebasestorage.app",
+  messagingSenderId: "667948920503",
+  appId: "1:667948920503:web:60225720defcb4950c2732"
+};
+const db = getFirestore(initializeApp(firebaseConfig));
 
-    <p>
-      まずはサイトが正常に表示されるか確認するためのページです。
-    </p>
-  </main>
+/* ============================================================
+   実験設定
+   ============================================================ */
+const TRIALS_PER_CONDITION = 60;
+const HISTORY_LENGTH = 5;            // 直近の選択を何個表示するか（0 = 表示しない）
+const INSTRUCTION_ID = "random_v1";  // 教示を変えたらここも変える
 
+const SHAPE_SVG = {
+  circle:   '<circle cx="50" cy="50" r="38"/>',
+  triangle: '<polygon points="50,12 90,82 10,82"/>',
+  square:   '<rect x="14" y="14" width="72" height="72"/>',
+  star:     '<polygon points="50,8 61,38 93,38 67,57 77,89 50,70 23,89 33,57 7,38 39,38"/>',
+  diamond:  '<polygon points="50,8 90,50 50,92 10,50"/>',
+  hexagon:  '<polygon points="50,8 88,29 88,71 50,92 12,71 12,29"/>'
+};
 
-  <script>
-    // JavaScriptを書く場所
+// B・Dは今回使わないが、戻せるよう定義を残している
+const CONDITIONS = {
+  A: { type: "number", layout: [1, 2, 3, 4, 5, 6] },
+  B: { type: "number", layout: [4, 1, 5, 2, 6, 3] },
+  C: { type: "shape",  layout: ["circle", "triangle", "square", "star", "diamond", "hexagon"] },
+  D: { type: "shape",  layout: ["diamond", "circle", "hexagon", "square", "star", "triangle"] }
+};
 
-    console.log("サイトが正常に読み込まれました。");
-  </script>
+// 今回の割り当て：1人1条件（AまたはC）
+const GROUPS = { A: ["A"], C: ["C"] };
 
+const SURVEY = [
+  ["thought_all",            "最後まで常にランダムになるように考えながら入力した。"],
+  ["no_thought",             "最初からあまり何も考えず押していた。"],
+  ["thought_then_careless",  "最初は考えながら入力していたが、途中から適当に入力した。"],
+  ["used_rule",              "何らかのやり方（ルール）を決めて選んでいた。"]
+];
+
+/* ============================================================
+   割り当て：完了数が少ない方へ。同数ならランダム
+   ============================================================ */
+async function getAssignmentCounts() {
+  const snap = await getDoc(doc(db, "counters", "assignment"));
+  if (!snap.exists()) throw new Error("counters/assignment がありません");
+  const d = snap.data();
+  return { A: d.A ?? 0, C: d.C ?? 0 };
+}
+
+function chooseGroup(counts) {
+  const keys = Object.keys(GROUPS);
+  const min = Math.min(...keys.map(g => counts[g] ?? 0));
+  const cand = keys.filter(g => (counts[g] ?? 0) === min);
+  return cand[Math.floor(Math.random() * cand.length)];
+}
+
+/* ============================================================
+   保存：回答の作成とカウンター +1 を同時に行う（テスト回答は +1 しない）
+   ============================================================ */
+async function saveResponse(data) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, "responses", data.responseId), { ...data, completedAt: serverTimestamp() });
+  if (!data.isTest) {
+    batch.update(doc(db, "counters", "assignment"), { [data.group]: increment(1) });
+  }
+  await batch.commit();
+  return true;
+}
+
+/* ============================================================
+   状態
+   ============================================================ */
+const params = new URLSearchParams(location.search);
+const app = document.getElementById("app");
+const state = {
+  responseId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)),
+  group: null, assignment: null, order: [], trials: [], lastTime: 0, session: null, selfReport: null
+};
+const el = html => { app.innerHTML = html; };
+
+/* ============================================================
+   画面
+   ============================================================ */
+function showIntro() {
+  el(`
+    <h1>選択課題</h1>
+    <p>画面に6つのボタンが表示されます。<span class="em">できるだけランダムになるように</span>、1つずつ選んでください。</p>
+    <p>これを ${TRIALS_PER_CONDITION} 回くり返します。数分で終わります。</p>
+    ${HISTORY_LENGTH > 0 ? `<p class="sub">画面には、直近に選んだ ${HISTORY_LENGTH} 個が表示されます。</p>` : ""}
+    <p class="sub">氏名などの個人情報は集めません。最後まで終わったときだけ、回答が保存されます。途中でやめた場合、回答は保存されません。</p>
+    <button class="main" id="go">はじめる</button>
+  `);
+  document.getElementById("go").onclick = async (e) => {
+    e.target.disabled = true;
+    const forced = params.get("group");
+    if (forced && GROUPS[forced]) {            // テスト用：?group=A / ?group=C
+      state.group = forced; state.assignment = "url";
+    } else {
+      try { state.group = chooseGroup(await getAssignmentCounts()); state.assignment = "counter"; }
+      catch (err) {                            // 読み取りに失敗したらランダム
+        console.error(err);
+        state.group = Object.keys(GROUPS)[Math.floor(Math.random() * 2)]; state.assignment = "random";
+      }
+    }
+    state.order = GROUPS[state.group];
+    startCondition();
+  };
+}
+
+function startCondition() {
+  const name = state.order[0], cond = CONDITIONS[name];
+  state.trials = [];
+  const buttons = cond.layout.map((v, pos) => {
+    const inner = cond.type === "number" ? String(v)
+      : `<svg viewBox="0 0 100 100" aria-hidden="true">${SHAPE_SVG[v]}</svg>`;
+    return `<button class="choice" data-pos="${pos}" aria-label="${v}">${inner}</button>`;
+  }).join("");
+  const hist = HISTORY_LENGTH > 0
+    ? `<div class="history" id="history" aria-label="直近の選択">${'<div class="slot"></div>'.repeat(HISTORY_LENGTH)}</div>` : "";
+  el(`
+    <div class="count" id="count">0 / ${TRIALS_PER_CONDITION}</div>
+    ${hist}
+    <div class="grid" id="grid">${buttons}</div>
+  `);
+  state.lastTime = performance.now();   // 最初の選択は画面表示からの時間
+  document.getElementById("grid").addEventListener("click", onChoice);
+}
+
+function updateHistory(cond) {
+  const box = document.getElementById("history");
+  if (!box) return;
+  const recent = state.trials.slice(-HISTORY_LENGTH).map(t => t.value);
+  const empty = HISTORY_LENGTH - recent.length;
+  let out = "";
+  for (let k = 0; k < HISTORY_LENGTH; k++) {
+    if (k < empty) { out += '<div class="slot"></div>'; continue; }
+    const v = recent[k - empty];
+    const inner = cond.type === "number" ? String(v)
+      : `<svg viewBox="0 0 100 100" aria-hidden="true">${SHAPE_SVG[v]}</svg>`;
+    out += `<div class="slot filled">${inner}</div>`;
+  }
+  box.innerHTML = out;
+}
+
+function onChoice(e) {
+  const btn = e.target.closest(".choice");
+  if (!btn) return;
+  const now = performance.now();
+  const name = state.order[0], cond = CONDITIONS[name];
+  const pos = Number(btn.dataset.pos);
+  state.trials.push({ i: state.trials.length, value: cond.layout[pos], pos, ms: Math.round(now - state.lastTime) });
+  state.lastTime = now;
+
+  btn.classList.add("hit");
+  setTimeout(() => btn.classList.remove("hit"), 100);
+  updateHistory(cond);
+  document.getElementById("count").textContent = `${state.trials.length} / ${TRIALS_PER_CONDITION}`;
+
+  if (state.trials.length >= TRIALS_PER_CONDITION) {
+    document.getElementById("grid").removeEventListener("click", onChoice);
+    state.session = { condition: name, layout: cond.layout.slice(), trials: state.trials };
+    setTimeout(showSurvey, 300);
+  }
+}
+
+function showSurvey() {
+  el(`
+    <h1>最後に、ひとつだけ</h1>
+    <p>次の中から正直に選んでください。どれを選んでも問題ありません。</p>
+    <div id="opts" style="display:flex;flex-direction:column;gap:10px">
+      ${SURVEY.map(([v, t]) => `<label class="opt"><input type="radio" name="sr" value="${v}"><span>${t}</span></label>`).join("")}
+    </div>
+    <button class="main" id="save" disabled>回答を送信する</button>
+  `);
+  const save = document.getElementById("save");
+  document.getElementById("opts").onchange = (e) => { state.selfReport = e.target.value; save.disabled = false; };
+  save.onclick = finish;
+}
+
+function buildData() {
+  return {
+    responseId: state.responseId,
+    group: state.group,
+    assignment: state.assignment,
+    conditionOrder: state.order.slice(),
+    trialsPerCondition: TRIALS_PER_CONDITION,
+    historyLength: HISTORY_LENGTH,
+    instruction: INSTRUCTION_ID,
+    selfReport: state.selfReport,
+    isTest: params.has("test"),
+    sessions: [state.session]
+  };
+}
+
+async function finish() {
+  const data = buildData();
+  el(`<h1>保存しています…</h1>`);
+  try {
+    await saveResponse(data);
+    el(`<h1>終了です</h1><p>回答を保存しました。ご協力ありがとうございました。このページは閉じて大丈夫です。</p>`);
+  } catch (err) {
+    console.error(err);
+    el(`
+      <h1>保存できませんでした</h1>
+      <div class="status ng">通信を確認して、「もう一度保存する」を押してください。ページを閉じると回答は失われます。</div>
+      <div class="row"><button class="main" id="retry">もう一度保存する</button></div>
+    `);
+    document.getElementById("retry").onclick = finish;
+  }
+}
+
+showIntro();
+</script>
 </body>
 </html>
