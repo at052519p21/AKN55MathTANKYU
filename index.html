@@ -110,8 +110,8 @@ const CONDITIONS = {
   D: { type: "shape",  layout: ["diamond", "circle", "hexagon", "square", "star", "triangle"] }
 };
 
-// 今回の割り当て：1人1条件（AまたはC）
-const GROUPS = { A: ["A"], C: ["C"] };
+// 今回の割り当て：全員が2条件を行う。AC＝A→C、CA＝C→A
+const GROUPS = { AC: ["A", "C"], CA: ["C", "A"] };
 
 const SURVEY = [
   ["thought_all",            "最後まで常にランダムになるように考えながら入力した。"],
@@ -127,7 +127,7 @@ async function getAssignmentCounts() {
   const snap = await getDoc(doc(db, "counters", "assignment"));
   if (!snap.exists()) throw new Error("counters/assignment がありません");
   const d = snap.data();
-  return { A: d.A ?? 0, C: d.C ?? 0 };
+  return { AC: d.AC ?? 0, CA: d.CA ?? 0 };
 }
 
 function chooseGroup(counts) {
@@ -157,7 +157,7 @@ const params = new URLSearchParams(location.search);
 const app = document.getElementById("app");
 const state = {
   responseId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)),
-  group: null, assignment: null, order: [], trials: [], lastTime: 0, session: null, selfReport: null
+  group: null, assignment: null, order: [], condIndex: 0, trials: [], lastTime: 0, pending: null, sessions: [], selfReport: null
 };
 const el = html => { app.innerHTML = html; };
 
@@ -168,7 +168,7 @@ function showIntro() {
   el(`
     <h1>選択課題</h1>
     <p>画面に6つのボタンが表示されます。<span class="em">できるだけランダムになるように</span>、1つずつ選んでください。</p>
-    <p>これを ${TRIALS_PER_CONDITION} 回くり返します。数分で終わります。</p>
+    <p>これを ${TRIALS_PER_CONDITION} 回くり返します。これを2回（パート1・パート2）行います。全体で数分で終わります。</p>
     ${HISTORY_LENGTH > 0 ? `<p class="sub">画面には、直近に選んだ ${HISTORY_LENGTH} 個が表示されます。</p>` : ""}
     <p class="sub">氏名などの個人情報は集めません。最後まで終わったときだけ、回答が保存されます。途中でやめた場合、回答は保存されません。</p>
     <button class="main" id="go">はじめる</button>
@@ -176,13 +176,13 @@ function showIntro() {
   document.getElementById("go").onclick = async (e) => {
     e.target.disabled = true;
     const forced = params.get("group");
-    if (forced && GROUPS[forced]) {            // テスト用：?group=A / ?group=C
+    if (forced && GROUPS[forced]) {            // テスト用：?group=AC / ?group=CA
       state.group = forced; state.assignment = "url";
     } else {
       try { state.group = chooseGroup(await getAssignmentCounts()); state.assignment = "counter"; }
       catch (err) {                            // 読み取りに失敗したらランダム
         console.error(err);
-        state.group = Object.keys(GROUPS)[Math.floor(Math.random() * 2)]; state.assignment = "random";
+        state.group = Object.keys(GROUPS)[Math.floor(Math.random() * Object.keys(GROUPS).length)]; state.assignment = "random";
       }
     }
     state.order = GROUPS[state.group];
@@ -191,7 +191,7 @@ function showIntro() {
 }
 
 function startCondition() {
-  const name = state.order[0], cond = CONDITIONS[name];
+  const name = state.order[state.condIndex], cond = CONDITIONS[name];
   state.trials = [];
   const buttons = cond.layout.map((v, pos) => {
     const inner = cond.type === "number" ? String(v)
@@ -229,7 +229,7 @@ function onChoice(e) {
   const btn = e.target.closest(".choice");
   if (!btn) return;
   const now = performance.now();
-  const name = state.order[0], cond = CONDITIONS[name];
+  const name = state.order[state.condIndex], cond = CONDITIONS[name];
   const pos = Number(btn.dataset.pos);
   state.trials.push({ i: state.trials.length, value: cond.layout[pos], pos, ms: Math.round(now - state.lastTime) });
   state.lastTime = now;
@@ -241,23 +241,41 @@ function onChoice(e) {
 
   if (state.trials.length >= TRIALS_PER_CONDITION) {
     document.getElementById("grid").removeEventListener("click", onChoice);
-    state.session = { condition: name, layout: cond.layout.slice(), trials: state.trials };
+    state.pending = { condition: name, layout: cond.layout.slice(), trials: state.trials };
     setTimeout(showSurvey, 300);
   }
 }
 
-function showSurvey() {
+function showReady() {
+  const n = state.condIndex + 1;
   el(`
-    <h1>最後に、ひとつだけ</h1>
-    <p>次の中から正直に選んでください。どれを選んでも問題ありません。</p>
+    <h1>パート ${n} / ${state.order.length}</h1>
+    <p>パート${n - 1}が終わりました。ボタンの見た目が変わります。</p>
+    <p>先ほどと同じように、<span class="em">できるだけランダムになるように</span>、ボタンを ${TRIALS_PER_CONDITION} 回選びます。少し休んでから始めても大丈夫です。</p>
+    <button class="main" id="go">始める</button>
+  `);
+  document.getElementById("go").onclick = startCondition;
+}
+
+function showSurvey() {
+  const part = state.condIndex + 1, total = state.order.length, last = part === total;
+  state.selfReport = null;
+  el(`
+    <h1>${last ? "最後に、ひとつだけ" : `パート${part}が終わりました`}</h1>
+    <p>パート${part}について、次の中から正直に選んでください。どれを選んでも問題ありません。</p>
     <div id="opts" style="display:flex;flex-direction:column;gap:10px">
       ${SURVEY.map(([v, t]) => `<label class="opt"><input type="radio" name="sr" value="${v}"><span>${t}</span></label>`).join("")}
     </div>
-    <button class="main" id="save" disabled>回答を送信する</button>
+    <button class="main" id="next" disabled>${last ? "回答を送信する" : "次へ"}</button>
   `);
-  const save = document.getElementById("save");
-  document.getElementById("opts").onchange = (e) => { state.selfReport = e.target.value; save.disabled = false; };
-  save.onclick = finish;
+  const btn = document.getElementById("next");
+  document.getElementById("opts").onchange = (e) => { state.selfReport = e.target.value; btn.disabled = false; };
+  btn.onclick = () => {
+    state.pending.selfReport = state.selfReport;      // アンケート回答は、そのパートのデータに入れる
+    state.sessions.push(state.pending);
+    state.condIndex++;
+    last ? finish() : showReady();
+  };
 }
 
 function buildData() {
@@ -269,9 +287,8 @@ function buildData() {
     trialsPerCondition: TRIALS_PER_CONDITION,
     historyLength: HISTORY_LENGTH,
     instruction: INSTRUCTION_ID,
-    selfReport: state.selfReport,
     isTest: params.has("test"),
-    sessions: [state.session]
+    sessions: state.sessions
   };
 }
 
