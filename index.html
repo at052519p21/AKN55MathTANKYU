@@ -113,6 +113,10 @@ const CONDITIONS = {
 // 今回の割り当て：全員が2条件を行う。AC＝A→C、CA＝C→A
 const GROUPS = { AC: ["A", "C"], CA: ["C", "A"] };
 
+// 不正入力とみなす基準：当てはまった回答は保存せず、カウンターも増やさない（パート終了時に点検）
+const MAX_SAME_BUTTON_SHARE = 0.9;  // 同じボタンの選択がこの割合以上 → 不正（60回中54回以上）
+const MIN_MEDIAN_MS = 50;           // 選択間隔の中央値がこれ未満 → 不正
+
 const SURVEY = [
   ["thought_all",            "最後まで常にランダムになるように考えながら入力した。"],
   ["no_thought",             "最初からあまり何も考えず押していた。"],
@@ -242,8 +246,37 @@ function onChoice(e) {
   if (state.trials.length >= TRIALS_PER_CONDITION) {
     document.getElementById("grid").removeEventListener("click", onChoice);
     state.pending = { condition: name, layout: cond.layout.slice(), trials: state.trials };
-    setTimeout(showSurvey, 300);
+    setTimeout(() => {
+      // ?nocheck を付けると点検を省略できる（動作テスト用）
+      const reason = params.has("nocheck") ? null : checkInvalid(state.trials);
+      reason ? showRejected(reason) : showSurvey();
+    }, 300);
   }
+}
+
+// 不正な入力かどうかを調べる。問題なければ null、問題があれば理由を返す
+function checkInvalid(trials) {
+  const n = trials.length;
+  const byPos = {};
+  trials.forEach((t) => { byPos[t.pos] = (byPos[t.pos] || 0) + 1; });
+  if (Math.max(...Object.values(byPos)) / n >= MAX_SAME_BUTTON_SHARE) return "same_button";
+
+  const ms = trials.slice(1).map((t) => t.ms).sort((a, b) => a - b);   // 1回目（画面表示から）は除く
+  const mid = Math.floor(ms.length / 2);
+  const median = ms.length % 2 ? ms[mid] : (ms[mid - 1] + ms[mid]) / 2;
+  if (median < MIN_MEDIAN_MS) return "too_fast";
+  return null;
+}
+
+// 保存せずに終了する（何も送信しないので、カウンターも増えない）
+function showRejected(reason) {
+  console.warn("入力が基準に合わなかったため保存しません:", reason);
+  el(`
+    <h1>回答を保存できませんでした</h1>
+    <p>入力が正しく記録されなかった可能性があるため、この回答は保存されません。</p>
+    <div class="row"><button class="main" id="again">最初からやり直す</button></div>
+  `);
+  document.getElementById("again").onclick = () => location.reload();
 }
 
 function showReady() {
