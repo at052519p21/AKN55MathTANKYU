@@ -90,8 +90,8 @@ const db = getFirestore(initializeApp(firebaseConfig));
    実験設定
    ============================================================ */
 const TRIALS_PER_CONDITION = 60;
-const HISTORY_LENGTH = 5;            // 直近の選択を何個表示するか（0 = 表示しない）
-const INSTRUCTION_ID = "random_v1";  // 教示を変えたらここも変える
+const HISTORY_LENGTH = 0;            // 直近の選択を何個表示するか（0 = 表示しない）
+const INSTRUCTION_ID = "dice_v1";    // 教示を変えたらここも変える（random_v1 は試験運用の「ランダムに」）
 
 const SHAPE_SVG = {
   circle:   '<circle cx="50" cy="50" r="38"/>',
@@ -118,9 +118,9 @@ const MAX_SAME_BUTTON_SHARE = 0.9;  // 同じボタンの選択がこの割合�
 const MIN_MEDIAN_MS = 50;           // 選択間隔の中央値がこれ未満 → 不正
 
 const SURVEY = [
-  ["thought_all",            "最後まで常にランダムになるように考えながら入力した。"],
-  ["no_thought",             "最初からあまり何も考えず押していた。"],
-  ["thought_then_careless",  "最初は考えながら入力していたが、途中から適当に入力した。"],
+  ["thought_all",            "最後まで常に、サイコロを振るつもりで考えながら入力した。"],
+  ["no_thought",             "最初から、あまり何も考えずに押していた。"],
+  ["thought_then_careless",  "最初は、サイコロを振るつもりで考えながら入力していたが、途中から適当に入力した。"],
   ["used_rule",              "何らかのやり方（ルール）を決めて選んでいた。"]
 ];
 
@@ -159,8 +159,21 @@ async function saveResponse(data) {
    ============================================================ */
 const params = new URLSearchParams(location.search);
 const app = document.getElementById("app");
+const makeId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+
+// 端末ID：このブラウザに保存する匿名のID。同じ端末・ブラウザからの回答を関連づけるために使う。
+// 保存できない環境（シークレットモードなど）では空文字にして、回答自体は続けられるようにする。
+function getDeviceId() {
+  const KEY = "choiceExp_deviceId_v1";
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) { id = makeId(); localStorage.setItem(KEY, id); }
+    return id;
+  } catch (err) { return ""; }
+}
+
 const state = {
-  responseId: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)),
+  responseId: makeId(),
   group: null, assignment: null, order: [], condIndex: 0, trials: [], lastTime: 0, pending: null, sessions: [], selfReport: null
 };
 const el = html => { app.innerHTML = html; };
@@ -171,10 +184,10 @@ const el = html => { app.innerHTML = html; };
 function showIntro() {
   el(`
     <h1>選択課題</h1>
-    <p>画面に6つのボタンが表示されます。<span class="em">できるだけランダムになるように</span>、1つずつ選んでください。</p>
+    <p>画面に6つのボタンが表示されます。6つのボタンのうち、どれを押すかを、<span class="em">サイコロを振って決めるつもりで</span>選んでください。</p>
     <p>これを ${TRIALS_PER_CONDITION} 回くり返します。これを2回（パート1・パート2）行います。全体で数分で終わります。</p>
     ${HISTORY_LENGTH > 0 ? `<p class="sub">画面には、直近に選んだ ${HISTORY_LENGTH} 個が表示されます。</p>` : ""}
-    <p class="sub">氏名などの個人情報は集めません。最後まで終わったときだけ、回答が保存されます。途中でやめた場合、回答は保存されません。</p>
+    <p class="sub">この調査では、同じ端末からの回答を関連づけるため、匿名のIDをブラウザに保存します。氏名などの個人情報は集めません。最後まで終わったときだけ、回答が保存されます。途中でやめた場合、回答は保存されません。</p>
     <button class="main" id="go">はじめる</button>
   `);
   document.getElementById("go").onclick = async (e) => {
@@ -284,7 +297,7 @@ function showReady() {
   el(`
     <h1>パート ${n} / ${state.order.length}</h1>
     <p>パート${n - 1}が終わりました。ボタンの見た目が変わります。</p>
-    <p>先ほどと同じように、<span class="em">できるだけランダムになるように</span>、ボタンを ${TRIALS_PER_CONDITION} 回選びます。少し休んでから始めても大丈夫です。</p>
+    <p>先ほどと同じように、6つのボタンのうち、どれを押すかを、<span class="em">サイコロを振って決めるつもりで</span>選んでください（${TRIALS_PER_CONDITION} 回）。少し休んでから始めても大丈夫です。</p>
     <button class="main" id="go">始める</button>
   `);
   document.getElementById("go").onclick = startCondition;
@@ -320,6 +333,7 @@ function buildData() {
     trialsPerCondition: TRIALS_PER_CONDITION,
     historyLength: HISTORY_LENGTH,
     instruction: INSTRUCTION_ID,
+    deviceId: getDeviceId(),
     isTest: params.has("test"),
     sessions: state.sessions
   };
