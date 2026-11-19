@@ -260,8 +260,7 @@ function onChoice(e) {
     document.getElementById("grid").removeEventListener("click", onChoice);
     state.pending = { condition: name, layout: cond.layout.slice(), trials: state.trials };
     setTimeout(() => {
-      // ?nocheck を付けると点検を省略できる（動作テスト用）
-      const reason = params.has("nocheck") ? null : checkInvalid(state.trials);
+      const reason = checkInvalid(state.trials);   // 例外なく、必ず点検する
       reason ? showRejected(reason) : showSurvey();
     }, 300);
   }
